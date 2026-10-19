@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icone.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icone.svg">
-  <link rel="stylesheet" href="estilo.css?v=7">
+  <link rel="stylesheet" href="estilo.css?v=9">
 </head>
 <body>
   <header class="topo">
@@ -24,6 +24,7 @@
       <strong id="mes-nome"></strong>
       <button class="seta" data-mes="1" aria-label="Próximo mês">›</button>
     </div>
+    <div class="filtro" id="filtro" role="radiogroup" aria-label="Filtrar por pessoa" hidden></div>
   </header>
 
   <!-- configuração pendente -->
@@ -105,6 +106,7 @@
         <label class="valor">Valor
           <span class="valor-campo"><em>R$</em><input name="valor" inputmode="decimal" required placeholder="0,00" autocomplete="off"></span>
         </label>
+        <div class="campo-quem"><span>Quem pagou</span><div class="pessoas" id="lanc-quem"></div></div>
         <label id="campo-categoria">Categoria <select name="categoria"></select></label>
         <label id="campo-caixinha" hidden>Caixinha <select name="caixinha_id"></select></label>
         <label>Descrição <input name="descricao" maxlength="80" placeholder="Ex.: mercado do mês"></label>
@@ -154,6 +156,7 @@
           <label class="curto">Dia <input name="dia" type="number" min="1" max="31" value="5" required></label>
           <label>Categoria <select name="categoria"></select></label>
         </div>
+        <div class="campo-quem"><span>Quem paga</span><div class="pessoas" id="fixa-quem"></div></div>
         <button type="submit" class="primario">Salvar</button>
         <button type="button" id="cancelar-fixa" class="secundario">Cancelar</button>
         <p id="msg-fixa" class="msg"></p>
@@ -166,6 +169,21 @@
     </section>
   </main>
 
+  <!-- recadinho do Pedro para a Giovanna (aparece quando ela entra) -->
+  <div id="carta" class="carta-fundo" hidden role="dialog" aria-modal="true" aria-labelledby="carta-titulo">
+    <div class="carta">
+      <div class="carta-coracoes" aria-hidden="true">💜</div>
+      <h2 id="carta-titulo">Gi, meu amor</h2>
+      <p>Fiz esse cantinho pra gente cuidar do nosso futuro juntos. Cada real guardado aqui é um passo a mais
+        pro nosso casamento, pras nossas viagens e pra casa que a gente sonha.</p>
+      <p>Obrigado por dividir a vida comigo: os planos, as contas e as risadas.
+        Com você, até controle de gastos fica bonito.</p>
+      <p>Te amo hoje e em todos os meses que esse app ainda vai contar.</p>
+      <p class="carta-assinatura">Pedro</p>
+      <button type="button" id="fechar-carta" class="primario">Também te amo 💜</button>
+    </div>
+  </div>
+
   <nav id="abas" class="abas" hidden>
     <button data-aba="resumo" class="ativa"><i>📊</i><span>Resumo</span></button>
     <button data-aba="fixas"><i>📌</i><span>Fixas</span></button>
@@ -175,7 +193,7 @@
   </nav>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0/dist/umd/supabase.min.js"></script>
-  <script src="config.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="config.js?v=9"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

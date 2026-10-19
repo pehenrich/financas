@@ -21,6 +21,8 @@ const lerValor = (t) => {
 
 let db, usuario, membros = [], caixinhas = [], lancamentos = [], fixas = [], semFixas = false;
 let abaAtual = "resumo";
+let filtroQuem = "";
+let acabouDeEntrar = false; // tocou em "Entrar" agora (para o recadinho da Giovanna) // "" = os dois; senão o e-mail da pessoa
 let recuperando = /type=recovery/.test(location.hash); // veio do link "esqueci minha senha"
 const mes = new Date(); mes.setDate(1);
 
@@ -31,6 +33,22 @@ function mostrar(id) {
   $("#abas").hidden = !dentro;
   $("[data-sair]").hidden = !(dentro || id === "tela-negado");
   $("#mes").hidden = !(dentro && (abaAtual === "resumo" || abaAtual === "historico"));
+  $("#filtro").hidden = $("#mes").hidden;
+}
+
+const mesmoEmail = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+const classe = (email) => { const n = nomeDe(email); return /^p/i.test(n) ? "p" : /^g/i.test(n) ? "g" : ""; };
+
+// Botões Todos/Pedro/Giovanna e as escolhas de "quem pagou" (montados a partir da tabela membros)
+function desenharPessoas() {
+  $("#filtro").innerHTML = [["", "Todos"], ...membros.map((m) => [m.email, m.nome || nomeDe(m.email)])].map(([email, nome]) =>
+    `<button type="button" role="radio" aria-checked="${email === filtroQuem}" data-filtro="${esc(email)}"
+      class="${email ? classe(email) : ""}${mesmoEmail(email, filtroQuem) ? " ativo" : ""}">${esc(nome)}</button>`).join("");
+  for (const [alvo, nomeCampo] of [["#lanc-quem", "quem"], ["#fixa-quem", "quem"]]) {
+    const el = $(alvo), marcado = el.querySelector("input:checked")?.value || usuario?.email;
+    el.innerHTML = membros.map((m) => `<label><input type="radio" name="${nomeCampo}" value="${esc(m.email)}"
+      ${mesmoEmail(m.email, marcado) ? "checked" : ""}><span class="${classe(m.email)}">${esc(m.nome || nomeDe(m.email))}</span></label>`).join("");
+  }
 }
 
 const membro = (email) => membros.find((x) => x.email.toLowerCase() === String(email).toLowerCase());
@@ -66,6 +84,7 @@ async function lancarFixas() {
   if (!faltam.length) return false;
   const linhas = faltam.map((f) => ({
     tipo: "saida", valor: f.valor, descricao: f.descricao, categoria: f.categoria, fixa_id: f.id, fixa_mes: mesAtual,
+    quem: f.quem || usuario.email,
     data: `${mesAtual}-${String(Math.min(f.dia, ultimo)).padStart(2, "0")}`,
   }));
   const { error } = await db.from("lancamentos").upsert(linhas, { onConflict: "fixa_id,fixa_mes", ignoreDuplicates: true });
@@ -83,7 +102,7 @@ function desenharFixas() {
     const lancada = lancamentos.some((l) => l.fixa_id === f.id && l.fixa_mes === mesAtual);
     return `<div class="fixa">
       <div class="fx-dia"><small>dia</small><b>${f.dia}</b></div>
-      <div class="fx-corpo"><b>${esc(f.descricao)}</b><small>${esc(f.categoria)}${lancada ? " · ✓ lançada neste mês" : ""}</small></div>
+      <div class="fx-corpo"><b>${esc(f.descricao)}</b><small>${f.quem ? selo(f.quem) : ""}${esc(f.categoria)}${lancada ? " · ✓ lançada neste mês" : ""}</small></div>
       <div class="fx-direita"><b>${real(f.valor)}</b>
         <div class="acoes"><button class="link" data-editar-fx="${f.id}">Editar</button>
         <button class="link perigo" data-apagar-fx="${f.id}">Apagar</button></div></div>
@@ -98,7 +117,7 @@ function guardadoEm(id) {
 
 const doMes = () => {
   const ini = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, "0")}`;
-  return lancamentos.filter((l) => l.data.startsWith(ini));
+  return lancamentos.filter((l) => l.data.startsWith(ini) && (!filtroQuem || mesmoEmail(l.quem, filtroQuem)));
 };
 
 // ---------- telas ----------
@@ -164,6 +183,7 @@ function desenharHistorico(ls) {
 }
 
 function desenhar() {
+  desenharPessoas();
   const nome = mes.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   $("#mes-nome").textContent = nome[0].toUpperCase() + nome.slice(1);
 
@@ -215,6 +235,7 @@ function abrirAba(nome) {
   $$(".aba").forEach((a) => (a.hidden = a.id !== "aba-" + nome));
   $$("#abas [data-aba]").forEach((b) => b.classList.toggle("ativa", b.dataset.aba === nome));
   $("#mes").hidden = !(nome === "resumo" || nome === "historico");
+  $("#filtro").hidden = $("#mes").hidden;
   window.scrollTo(0, 0);
 }
 
@@ -223,6 +244,7 @@ async function atualizar() {
     if (!(await carregar())) return;
     if (await lancarFixas()) await carregar();
     mostrar("app"); desenhar();
+    mostrarCarta();
   }
   catch (e) { alert("Erro ao carregar: " + e.message); }
 }
@@ -240,14 +262,19 @@ function ligarEventos() {
     const valor = lerValor(f.get("valor")), dia = Number(f.get("dia"));
     if (!(valor > 0)) { $("#msg-fixa").textContent = "Valor inválido."; return; }
     if (!(dia >= 1 && dia <= 31)) { $("#msg-fixa").textContent = "Dia entre 1 e 31."; return; }
-    const linha = { descricao: f.get("descricao"), valor, dia, categoria: f.get("categoria") };
+    const linha = { descricao: f.get("descricao"), valor, dia, categoria: f.get("categoria"), quem: f.get("quem") || usuario.email };
     const id = f.get("fx_id");
-    const { error } = id ? await db.from("fixas").update(linha).eq("id", id) : await db.from("fixas").insert(linha);
+    const salvar = (l) => (id ? db.from("fixas").update(l).eq("id", id) : db.from("fixas").insert(l));
+    let { error } = await salvar(linha);
+    if (error && /quem/.test(error.message)) { // banco sem a coluna fixas.quem (pessoas.sql não rodado)
+      delete linha.quem;
+      ({ error } = await salvar(linha));
+    }
     if (error) { $("#msg-fixa").textContent = "Erro: " + error.message; return; }
     if (id) { // o lançamento deste mês acompanha a mudança
       const agora = new Date(), mesAtual = hoje().slice(0, 7);
       const ultimo = new Date(agora.getFullYear(), agora.getMonth() + 1, 0).getDate();
-      await db.from("lancamentos").update({ valor, descricao: linha.descricao, categoria: linha.categoria,
+      await db.from("lancamentos").update({ valor, descricao: linha.descricao, categoria: linha.categoria, ...(linha.quem ? { quem: linha.quem } : {}),
         data: `${mesAtual}-${String(Math.min(dia, ultimo)).padStart(2, "0")}` }).eq("fixa_id", id).eq("fixa_mes", mesAtual);
     }
     fecharFormFixa();
@@ -262,7 +289,9 @@ function ligarEventos() {
     ev.preventDefault();
     const f = new FormData(ev.target);
     $("#msg-login").textContent = "Entrando…";
+    acabouDeEntrar = true;
     const { error } = await db.auth.signInWithPassword({ email: f.get("email"), password: f.get("senha") });
+    if (error) acabouDeEntrar = false;
     $("#msg-login").textContent = error ? traduzir(error.message) : "";
   });
   $("#criar-conta").addEventListener("click", async () => {
@@ -276,6 +305,10 @@ function ligarEventos() {
       : data.session ? "" : "Conta criada! Confirme pelo link que chegou no seu e-mail e depois entre.";
   });
 
+  $("#fechar-carta").addEventListener("click", () => {
+    $("#carta").hidden = true;
+    try { localStorage.setItem("carta-vista", "1"); } catch (_) { /* tudo bem */ }
+  });
   $("#esqueci").addEventListener("click", async () => {
     const email = $("#form-login").email.value.trim();
     if (!email) { $("#msg-login").textContent = "Digite seu e-mail acima e toque de novo em Esqueci minha senha."; return; }
@@ -303,7 +336,7 @@ function ligarEventos() {
     if (!(valor > 0)) { $("#msg-lanc").textContent = "Valor inválido."; return; }
     const cx = tipo === "deposito" || tipo === "retirada";
     if (cx && !f.get("caixinha_id")) { $("#msg-lanc").textContent = "Crie uma caixinha primeiro."; return; }
-    const linha = { tipo, valor, data: f.get("data"), descricao: f.get("descricao") || null,
+    const linha = { tipo, valor, data: f.get("data"), descricao: f.get("descricao") || null, quem: f.get("quem") || usuario.email,
       categoria: cx ? null : f.get("categoria"), caixinha_id: cx ? f.get("caixinha_id") : null };
     const { error } = await db.from("lancamentos").insert(linha);
     if (error) { $("#msg-lanc").textContent = "Erro: " + error.message; return; }
@@ -332,6 +365,7 @@ function ligarEventos() {
   document.addEventListener("click", async (ev) => {
     const b = ev.target.closest("button");
     if (!b) return;
+    if (b.dataset.filtro !== undefined) { filtroQuem = b.dataset.filtro; desenhar(); return; }
     if (b.dataset.apagar && confirm("Apagar este lançamento?")) {
       const { error } = await db.from("lancamentos").delete().eq("id", b.dataset.apagar);
       if (error) alert(error.message); else atualizar();
@@ -373,6 +407,8 @@ function abrirFormCaixinha(c) {
 function abrirFormFixa(x) {
   const f = $("#form-fixa");
   f.reset(); f.fx_id.value = ""; f.categoria.value = "💡 Contas";
+  const q = x?.quem || usuario?.email;
+  $$("#fixa-quem input").forEach((i) => (i.checked = mesmoEmail(i.value, q)));
   if (x) {
     f.fx_id.value = x.id; f.descricao.value = x.descricao; f.dia.value = x.dia; f.categoria.value = x.categoria;
     f.valor.value = Number(x.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
@@ -392,6 +428,17 @@ function fecharFormFixa() {
 function fecharFormCaixinha() {
   $("#form-caixinha").hidden = true;
   $("#nova-caixinha").hidden = false;
+}
+
+// Recadinho do Pedro: aparece para a Giovanna quando ela entra (e na primeira vez em cada aparelho).
+function mostrarCarta() {
+  if (!/^giovanna$/i.test(membro(usuario?.email)?.nome || "")) return;
+  let jaViu = false;
+  try { jaViu = localStorage.getItem("carta-vista") === "1"; } catch (_) { /* navegador sem armazenamento */ }
+  if (!acabouDeEntrar && jaViu) return;
+  acabouDeEntrar = false;
+  $("#carta").hidden = false;
+  $("#fechar-carta").focus();
 }
 
 function traduzir(m) {
