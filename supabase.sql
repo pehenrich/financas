@@ -52,6 +52,6 @@ create policy "casal" on lancamentos for all using (eh_membro()) with check (eh_
 
 -- TROQUE pelos e-mails de vocês dois (os mesmos que vão usar para entrar no app):
 insert into membros (email, nome) values
-  ('ordephenrich@gmail.com', 'Pedro'),
+  ('EMAIL_DO_PEDRO@exemplo.com', 'Pedro'),
   ('EMAIL_DA_GIOVANNA@exemplo.com', 'Giovanna')
 on conflict (email) do update set nome = excluded.nome;
