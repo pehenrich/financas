@@ -1,0 +1,9 @@
+{
+  "name": "Finanças do Casal",
+  "short_name": "Finanças",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f766e",
+  "theme_color": "#0f766e",
+  "icons": [{ "src": "icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

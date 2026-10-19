@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Finanças do Casal</title>
+  <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icone.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icone.svg">
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <header class="topo">
+    <h1>💑 Finanças do Casal</h1>
+    <button id="sair" class="link" hidden>Sair</button>
+  </header>
+
+  <!-- configuração pendente -->
+  <section id="tela-config" class="tela" hidden>
+    <div class="cartao">
+      <h2>Falta ligar o banco</h2>
+      <p>Preencha <code>config.js</code> com a URL e a chave <em>anon</em> do Supabase.</p>
+    </div>
+  </section>
+
+  <!-- login -->
+  <section id="tela-login" class="tela" hidden>
+    <form id="form-login" class="cartao">
+      <h2>Entrar</h2>
+      <label>E-mail <input type="email" name="email" required autocomplete="email"></label>
+      <label>Senha <input type="password" name="senha" required minlength="6" autocomplete="current-password"></label>
+      <button type="submit" class="primario">Entrar</button>
+      <button type="button" id="criar-conta" class="secundario">Criar conta</button>
+      <p id="msg-login" class="msg"></p>
+    </form>
+  </section>
+
+  <!-- sem permissão -->
+  <section id="tela-negado" class="tela" hidden>
+    <div class="cartao">
+      <h2>Conta sem acesso</h2>
+      <p>Este e-mail não está na lista do casal. Peça para incluir na tabela <code>membros</code> do Supabase.</p>
+    </div>
+  </section>
+
+  <main id="app" hidden>
+    <!-- RESUMO -->
+    <section id="aba-resumo" class="aba">
+      <div class="mes">
+        <button class="icone" data-mes="-1" aria-label="Mês anterior">‹</button>
+        <strong id="mes-nome"></strong>
+        <button class="icone" data-mes="1" aria-label="Próximo mês">›</button>
+      </div>
+      <div class="numeros">
+        <div class="num entrada"><span>Entrou</span><b id="r-entradas"></b></div>
+        <div class="num saida"><span>Saiu</span><b id="r-saidas"></b></div>
+        <div class="num guardado"><span>Guardado</span><b id="r-guardado"></b></div>
+        <div class="num sobra"><span>Sobrou</span><b id="r-sobra"></b></div>
+      </div>
+      <div class="cartao">
+        <h3>Gastos por categoria</h3>
+        <div id="r-categorias" class="barras"></div>
+      </div>
+      <div class="cartao">
+        <h3>Quem gastou</h3>
+        <div id="r-pessoas" class="barras"></div>
+      </div>
+      <div class="cartao">
+        <h3>Caixinhas</h3>
+        <div id="r-caixinhas"></div>
+      </div>
+    </section>
+
+    <!-- LANÇAR -->
+    <section id="aba-lancar" class="aba" hidden>
+      <form id="form-lanc" class="cartao">
+        <div class="tipos" role="radiogroup">
+          <label><input type="radio" name="tipo" value="saida" checked><span>💸 Gasto</span></label>
+          <label><input type="radio" name="tipo" value="entrada"><span>💵 Entrada</span></label>
+          <label><input type="radio" name="tipo" value="deposito"><span>🐷 Guardar</span></label>
+          <label><input type="radio" name="tipo" value="retirada"><span>↩️ Tirar</span></label>
+        </div>
+        <label>Valor (R$) <input name="valor" inputmode="decimal" required placeholder="0,00"></label>
+        <label id="campo-categoria">Categoria <select name="categoria"></select></label>
+        <label id="campo-caixinha" hidden>Caixinha <select name="caixinha_id"></select></label>
+        <label>Descrição <input name="descricao" maxlength="80" placeholder="Ex.: mercado do mês"></label>
+        <label>Data <input type="date" name="data" required></label>
+        <button type="submit" class="primario">Salvar</button>
+        <p id="msg-lanc" class="msg"></p>
+      </form>
+    </section>
+
+    <!-- CAIXINHAS -->
+    <section id="aba-caixinhas" class="aba" hidden>
+      <div id="lista-caixinhas"></div>
+      <form id="form-caixinha" class="cartao">
+        <h3 id="titulo-form-caixinha">Nova caixinha</h3>
+        <input type="hidden" name="cx_id">
+        <div class="linha">
+          <label class="curto">Emoji <input name="emoji" maxlength="4" value="💍"></label>
+          <label>Nome <input name="nome" required maxlength="40" placeholder="Casamento"></label>
+        </div>
+        <label>Meta (R$) <input name="meta" inputmode="decimal" required placeholder="30.000,00"></label>
+        <label>Prazo (opcional) <input type="date" name="prazo"></label>
+        <button type="submit" class="primario">Salvar caixinha</button>
+        <button type="button" id="cancelar-caixinha" class="secundario" hidden>Cancelar edição</button>
+        <p id="msg-caixinha" class="msg"></p>
+      </form>
+    </section>
+
+    <!-- HISTÓRICO -->
+    <section id="aba-historico" class="aba" hidden>
+      <div class="mes">
+        <button class="icone" data-mes="-1" aria-label="Mês anterior">‹</button>
+        <strong class="mes-nome"></strong>
+        <button class="icone" data-mes="1" aria-label="Próximo mês">›</button>
+      </div>
+      <ul id="lista-lanc" class="lista"></ul>
+    </section>
+  </main>
+
+  <nav id="abas" class="abas" hidden>
+    <button data-aba="resumo" class="ativa">📊<span>Resumo</span></button>
+    <button data-aba="lancar">➕<span>Lançar</span></button>
+    <button data-aba="caixinhas">🐷<span>Caixinhas</span></button>
+    <button data-aba="historico">📜<span>Histórico</span></button>
+  </nav>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
