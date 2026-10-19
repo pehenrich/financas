@@ -8,26 +8,33 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icone.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icone.svg">
-  <link rel="stylesheet" href="estilo.css?v=2">
+  <link rel="stylesheet" href="estilo.css?v=5">
 </head>
 <body>
   <header class="topo">
-    <h1>💑 Pedro &amp; Giovanna</h1>
-    <button id="sair" class="link" hidden>Sair</button>
+    <div class="topo-linha">
+      <h1><span class="coracao">💑</span> Pedro &amp; Giovanna</h1>
+      <button class="sair" data-sair hidden>Sair</button>
+    </div>
+    <div class="mes" id="mes" hidden>
+      <button class="seta" data-mes="-1" aria-label="Mês anterior">‹</button>
+      <strong id="mes-nome"></strong>
+      <button class="seta" data-mes="1" aria-label="Próximo mês">›</button>
+    </div>
   </header>
 
   <!-- configuração pendente -->
   <section id="tela-config" class="tela" hidden>
     <div class="cartao">
       <h2>Falta ligar o banco</h2>
-      <p>Preencha <code>config.js</code> com a URL e a chave <em>anon</em> do Supabase.</p>
+      <p>Preencha <code>config.js</code> com a URL e a chave <em>publishable</em> do Supabase.</p>
     </div>
   </section>
 
   <!-- login -->
   <section id="tela-login" class="tela" hidden>
     <form id="form-login" class="cartao">
-      <h2>Entrar</h2>
+      <p class="boas-vindas">Nosso dinheiro, nossos planos. 💍✈️🏡</p>
       <label>E-mail <input type="email" name="email" required autocomplete="email"></label>
       <label>Senha <input type="password" name="senha" required minlength="6" autocomplete="current-password"></label>
       <button type="submit" class="primario">Entrar</button>
@@ -47,16 +54,19 @@
   <main id="app" hidden>
     <!-- RESUMO -->
     <section id="aba-resumo" class="aba">
-      <div class="mes">
-        <button class="icone" data-mes="-1" aria-label="Mês anterior">‹</button>
-        <strong id="mes-nome"></strong>
-        <button class="icone" data-mes="1" aria-label="Próximo mês">›</button>
+      <div class="destaque">
+        <span>Sobrou no mês</span>
+        <b id="r-sobra"></b>
+        <div class="mini">
+          <div><span>Entrou</span><b id="r-entradas" class="c-entrada"></b></div>
+          <div><span>Saiu</span><b id="r-saidas" class="c-saida"></b></div>
+          <div><span>Guardado</span><b id="r-guardado" class="c-guardado"></b></div>
+        </div>
+        <div class="gastos-linha">Gastos do mês: <b id="r-fixos"></b> fixos + <b id="r-variaveis"></b> do dia a dia</div>
       </div>
-      <div class="numeros">
-        <div class="num entrada"><span>Entrou</span><b id="r-entradas"></b></div>
-        <div class="num saida"><span>Saiu</span><b id="r-saidas"></b></div>
-        <div class="num guardado"><span>Guardado</span><b id="r-guardado"></b></div>
-        <div class="num sobra"><span>Sobrou</span><b id="r-sobra"></b></div>
+      <div class="cartao">
+        <h3>Caixinhas</h3>
+        <div id="r-caixinhas"></div>
       </div>
       <div class="cartao">
         <h3>Gastos por categoria</h3>
@@ -66,22 +76,20 @@
         <h3>Quem gastou</h3>
         <div id="r-pessoas" class="barras"></div>
       </div>
-      <div class="cartao">
-        <h3>Caixinhas</h3>
-        <div id="r-caixinhas"></div>
-      </div>
     </section>
 
     <!-- LANÇAR -->
     <section id="aba-lancar" class="aba" hidden>
       <form id="form-lanc" class="cartao">
-        <div class="tipos" role="radiogroup">
-          <label><input type="radio" name="tipo" value="saida" checked><span>💸 Gasto</span></label>
-          <label><input type="radio" name="tipo" value="entrada"><span>💵 Entrada</span></label>
-          <label><input type="radio" name="tipo" value="deposito"><span>🐷 Guardar</span></label>
-          <label><input type="radio" name="tipo" value="retirada"><span>↩️ Tirar</span></label>
+        <div class="tipos" role="radiogroup" aria-label="Tipo">
+          <label class="t-saida"><input type="radio" name="tipo" value="saida" checked><span>💸<small>Gasto</small></span></label>
+          <label class="t-entrada"><input type="radio" name="tipo" value="entrada"><span>💵<small>Entrada</small></span></label>
+          <label class="t-deposito"><input type="radio" name="tipo" value="deposito"><span>🐷<small>Guardar</small></span></label>
+          <label class="t-retirada"><input type="radio" name="tipo" value="retirada"><span>↩️<small>Tirar</small></span></label>
         </div>
-        <label>Valor (R$) <input name="valor" inputmode="decimal" required placeholder="0,00"></label>
+        <label class="valor">Valor
+          <span class="valor-campo"><em>R$</em><input name="valor" inputmode="decimal" required placeholder="0,00" autocomplete="off"></span>
+        </label>
         <label id="campo-categoria">Categoria <select name="categoria"></select></label>
         <label id="campo-caixinha" hidden>Caixinha <select name="caixinha_id"></select></label>
         <label>Descrição <input name="descricao" maxlength="80" placeholder="Ex.: mercado do mês"></label>
@@ -94,41 +102,65 @@
     <!-- CAIXINHAS -->
     <section id="aba-caixinhas" class="aba" hidden>
       <div id="lista-caixinhas"></div>
-      <form id="form-caixinha" class="cartao">
+      <button type="button" id="nova-caixinha" class="secundario">＋ Nova caixinha</button>
+      <form id="form-caixinha" class="cartao" hidden>
         <h3 id="titulo-form-caixinha">Nova caixinha</h3>
         <input type="hidden" name="cx_id">
         <div class="linha">
-          <label class="curto">Emoji <input name="emoji" maxlength="4" value="💍"></label>
-          <label>Nome <input name="nome" required maxlength="40" placeholder="Casamento"></label>
+          <label class="curto">Emoji <input name="emoji" maxlength="4" value="🏡"></label>
+          <label>Nome <input name="nome" required maxlength="40" placeholder="Reserva"></label>
         </div>
-        <label>Meta (R$) <input name="meta" inputmode="decimal" required placeholder="30.000,00"></label>
+        <label>Meta (R$) <input name="meta" inputmode="decimal" required placeholder="10.000,00"></label>
         <label>Prazo (opcional) <input type="date" name="prazo"></label>
         <button type="submit" class="primario">Salvar caixinha</button>
-        <button type="button" id="cancelar-caixinha" class="secundario" hidden>Cancelar edição</button>
+        <button type="button" id="cancelar-caixinha" class="secundario">Cancelar</button>
         <p id="msg-caixinha" class="msg"></p>
+      </form>
+    </section>
+
+    <!-- FIXAS -->
+    <section id="aba-fixas" class="aba" hidden>
+      <div class="destaque">
+        <span>Gastos fixos por mês</span>
+        <b id="f-total" class="c-saida"></b>
+        <div class="dica-fixas">Lançados sozinhos todo mês, no dia do vencimento.</div>
+      </div>
+      <p id="f-aviso" class="cartao aviso" hidden></p>
+      <div id="lista-fixas"></div>
+      <button type="button" id="nova-fixa" class="secundario">＋ Nova despesa fixa</button>
+      <form id="form-fixa" class="cartao" hidden>
+        <h3 id="titulo-form-fixa">Nova despesa fixa</h3>
+        <input type="hidden" name="fx_id">
+        <label>Descrição <input name="descricao" required maxlength="40" placeholder="Aluguel"></label>
+        <label class="valor">Valor por mês
+          <span class="valor-campo"><em>R$</em><input name="valor" inputmode="decimal" required placeholder="0,00" autocomplete="off"></span>
+        </label>
+        <div class="linha">
+          <label class="curto">Dia <input name="dia" type="number" min="1" max="31" value="5" required></label>
+          <label>Categoria <select name="categoria"></select></label>
+        </div>
+        <button type="submit" class="primario">Salvar</button>
+        <button type="button" id="cancelar-fixa" class="secundario">Cancelar</button>
+        <p id="msg-fixa" class="msg"></p>
       </form>
     </section>
 
     <!-- HISTÓRICO -->
     <section id="aba-historico" class="aba" hidden>
-      <div class="mes">
-        <button class="icone" data-mes="-1" aria-label="Mês anterior">‹</button>
-        <strong class="mes-nome"></strong>
-        <button class="icone" data-mes="1" aria-label="Próximo mês">›</button>
-      </div>
-      <ul id="lista-lanc" class="lista"></ul>
+      <div id="lista-lanc"></div>
     </section>
   </main>
 
   <nav id="abas" class="abas" hidden>
-    <button data-aba="resumo" class="ativa">📊<span>Resumo</span></button>
-    <button data-aba="lancar">➕<span>Lançar</span></button>
-    <button data-aba="caixinhas">🐷<span>Caixinhas</span></button>
-    <button data-aba="historico">📜<span>Histórico</span></button>
+    <button data-aba="resumo" class="ativa"><i>📊</i><span>Resumo</span></button>
+    <button data-aba="fixas"><i>📌</i><span>Fixas</span></button>
+    <button data-aba="lancar" class="mais" aria-label="Lançar"><i>＋</i></button>
+    <button data-aba="caixinhas"><i>🐷</i><span>Caixinhas</span></button>
+    <button data-aba="historico"><i>📜</i><span>Histórico</span></button>
   </nav>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0/dist/umd/supabase.min.js"></script>
-  <script src="config.js?v=2"></script>
-  <script src="app.js?v=2"></script>
+  <script src="config.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

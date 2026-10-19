@@ -4,6 +4,7 @@ const CATEGORIAS = {
           "🎉 Lazer", "👕 Compras", "📚 Educação", "🐶 Pets", "🎁 Presentes", "📦 Outros"],
   entrada: ["💼 Salário", "💰 Extra", "↩️ Reembolso", "📦 Outros"],
 };
+const ICONE = { entrada: "💵", saida: "💸", deposito: "🐷", retirada: "↩️" };
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -14,36 +15,79 @@ const lerValor = (t) => {
   // aceita "1.234,56", "1234,56" e "1234.56"
   t = String(t).trim().replace(/[^\d,.-]/g, "");
   if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, ""); // "30.000" = trinta mil
   return Math.round(parseFloat(t) * 100) / 100;
 };
 
-let db, usuario, membros = [], caixinhas = [], lancamentos = [];
-let mes = new Date(); mes.setDate(1);
+let db, usuario, membros = [], caixinhas = [], lancamentos = [], fixas = [], semFixas = false;
+let abaAtual = "resumo";
+const mes = new Date(); mes.setDate(1);
 
 function mostrar(id) {
   ["tela-config", "tela-login", "tela-negado"].forEach((t) => ($("#" + t).hidden = t !== id));
   const dentro = id === "app";
   $("#app").hidden = !dentro;
   $("#abas").hidden = !dentro;
-  $("#sair").hidden = !(dentro || id === "tela-negado");
+  $("[data-sair]").hidden = !(dentro || id === "tela-negado");
+  $("#mes").hidden = !(dentro && (abaAtual === "resumo" || abaAtual === "historico"));
 }
 
-function nomeDe(email) {
-  const m = membros.find((x) => x.email.toLowerCase() === String(email).toLowerCase());
-  return m?.nome || String(email).split("@")[0];
+const membro = (email) => membros.find((x) => x.email.toLowerCase() === String(email).toLowerCase());
+const nomeDe = (email) => membro(email)?.nome || String(email).split("@")[0];
+function selo(email) {
+  const n = nomeDe(email);
+  const cls = /^p/i.test(n) ? "p" : /^g/i.test(n) ? "g" : "";
+  return `<span class="quem ${cls}" title="${esc(n)}">${esc(n[0]?.toUpperCase() || "?")}</span>`;
 }
 
 // ---------- dados ----------
 async function carregar() {
-  const [m, c, l] = await Promise.all([
+  const [m, c, l, f] = await Promise.all([
     db.from("membros").select("*"),
     db.from("caixinhas").select("*").order("criado_em"),
     db.from("lancamentos").select("*").order("data", { ascending: false }).order("criado_em", { ascending: false }),
+    db.from("fixas").select("*").order("dia"),
   ]);
   for (const r of [m, c, l]) if (r.error) throw r.error;
-  membros = m.data; caixinhas = c.data; lancamentos = l.data;
+  semFixas = !!f.error; // tabela ainda não criada (fixas.sql)
+  membros = m.data; caixinhas = c.data; lancamentos = l.data; fixas = f.data || [];
   if (!membros.length) { mostrar("tela-negado"); return false; }
   return true;
+}
+
+// Lança as despesas fixas do mês atual que ainda não foram lançadas. O índice único (fixa_id, fixa_mes)
+// impede lançamento duplicado se os dois abrirem o app ao mesmo tempo.
+async function lancarFixas() {
+  if (semFixas) return false;
+  const agora = new Date(), mesAtual = hoje().slice(0, 7);
+  const ultimo = new Date(agora.getFullYear(), agora.getMonth() + 1, 0).getDate();
+  const faltam = fixas.filter((f) => f.ativa && !lancamentos.some((l) => l.fixa_id === f.id && l.fixa_mes === mesAtual));
+  if (!faltam.length) return false;
+  const linhas = faltam.map((f) => ({
+    tipo: "saida", valor: f.valor, descricao: f.descricao, categoria: f.categoria, fixa_id: f.id, fixa_mes: mesAtual,
+    data: `${mesAtual}-${String(Math.min(f.dia, ultimo)).padStart(2, "0")}`,
+  }));
+  const { error } = await db.from("lancamentos").upsert(linhas, { onConflict: "fixa_id,fixa_mes", ignoreDuplicates: true });
+  if (error) console.warn("fixas:", error.message);
+  return !error;
+}
+
+function desenharFixas() {
+  $("#f-aviso").hidden = !semFixas;
+  $("#f-aviso").textContent = semFixas ? "Falta criar a tabela das despesas fixas: rode o fixas.sql no Supabase." : "";
+  const ativas = fixas.filter((f) => f.ativa);
+  $("#f-total").textContent = real(ativas.reduce((s, f) => s + Number(f.valor), 0));
+  const mesAtual = hoje().slice(0, 7);
+  $("#lista-fixas").innerHTML = fixas.length ? `<div class="cartao">${fixas.map((f) => {
+    const lancada = lancamentos.some((l) => l.fixa_id === f.id && l.fixa_mes === mesAtual);
+    return `<div class="fixa">
+      <div class="fx-dia"><small>dia</small><b>${f.dia}</b></div>
+      <div class="fx-corpo"><b>${esc(f.descricao)}</b><small>${esc(f.categoria)}${lancada ? " · ✓ lançada neste mês" : ""}</small></div>
+      <div class="fx-direita"><b>${real(f.valor)}</b>
+        <div class="acoes"><button class="link" data-editar-fx="${f.id}">Editar</button>
+        <button class="link perigo" data-apagar-fx="${f.id}">Apagar</button></div></div>
+    </div>`;
+  }).join("")}</div>` : semFixas ? "" : `<div class="cartao"><p class="vazio">Cadastre aluguel, internet, academia…</p></div>`;
 }
 
 function guardadoEm(id) {
@@ -57,44 +101,71 @@ const doMes = () => {
 };
 
 // ---------- telas ----------
-function desenharMes() {
-  const nome = mes.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-  $$("#mes-nome, .mes-nome").forEach((e) => (e.textContent = nome[0].toUpperCase() + nome.slice(1)));
-}
-
 function barras(el, mapa, cor) {
   const itens = Object.entries(mapa).sort((a, b) => b[1] - a[1]);
   const max = Math.max(...itens.map((i) => i[1]), 1);
   el.innerHTML = itens.length ? itens.map(([k, v]) => `
     <div class="barra"><div class="rotulo"><span>${esc(k)}</span><b>${real(v)}</b></div>
     <div class="trilho"><div style="width:${(v / max) * 100}%;background:${cor}"></div></div></div>`).join("")
-    : `<p class="vazio">Nada lançado neste mês.</p>`;
+    : `<p class="vazio">Nenhum gasto neste mês.</p>`;
 }
 
-function progressoCaixinha(c, completo) {
+function cartaoCaixinha(c, completo) {
   const g = guardadoEm(c.id), meta = Number(c.meta) || 0;
-  const p = meta ? Math.min(100, (g / meta) * 100) : 0;
-  let extra = "";
-  if (completo && meta > g) {
-    extra = `Faltam ${real(meta - g)}`;
+  const p = meta ? Math.min(100, Math.max(0, (g / meta) * 100)) : 0;
+  let dica = "", ok = false;
+  if (!meta) dica = "Toque em Editar para definir a meta";
+  else if (g >= meta) { dica = "🎉 Meta batida!"; ok = true; }
+  else {
+    dica = `Faltam ${real(meta - g)}`;
     if (c.prazo) {
       const [a, m] = c.prazo.split("-").map(Number);
       const agora = new Date();
       const meses = (a - agora.getFullYear()) * 12 + (m - 1 - agora.getMonth()) + 1;
-      extra += meses > 0 ? ` · guardar ${real((meta - g) / meses)}/mês por ${meses} ${meses > 1 ? "meses" : "mês"}` : " · prazo vencido";
+      dica += meses > 0 ? ` · ${real((meta - g) / meses)}/mês por ${meses} ${meses > 1 ? "meses" : "mês"}` : " · prazo vencido";
     }
-  } else if (completo && meta && g >= meta) extra = "🎉 Meta batida!";
+  }
   return `<div class="caixinha">
-    <div class="rotulo"><span>${esc(c.emoji)} ${esc(c.nome)}</span><b>${real(g)} <small>de ${real(meta)}</small></b></div>
-    <div class="trilho"><div style="width:${p}%"></div></div>
-    <div class="det"><span>${p.toFixed(0)}%</span><span>${extra}</span></div>
-    ${completo ? `<div class="acoes"><button class="link" data-editar="${c.id}">Editar</button>
-      <button class="link perigo" data-apagar-cx="${c.id}">Apagar</button></div>` : ""}
+    <div class="cx-emoji">${esc(c.emoji)}</div>
+    <div class="cx-corpo">
+      <div class="cx-topo"><b>${esc(c.nome)}</b><span class="cx-pct">${meta ? p.toFixed(0) + "%" : ""}</span></div>
+      <div class="cx-valores"><b>${real(g)}</b>${meta ? ` de ${real(meta)}` : " guardados"}</div>
+      <div class="trilho"><div style="width:${p}%"></div></div>
+      ${completo ? `<div class="cx-dica${ok ? " ok" : ""}">${dica}</div>
+        <div class="acoes"><button class="link" data-editar="${c.id}">Editar</button>
+        <button class="link perigo" data-apagar-cx="${c.id}">Apagar</button></div>` : ""}
+    </div>
   </div>`;
 }
 
+function desenharHistorico(ls) {
+  if (!ls.length) { $("#lista-lanc").innerHTML = `<div class="cartao"><p class="vazio">Nada lançado neste mês.</p></div>`; return; }
+  const porDia = {};
+  ls.forEach((l) => (porDia[l.data] ||= []).push(l));
+  const hj = hoje();
+  const ontem = new Date(Date.now() - 864e5).toLocaleDateString("sv-SE");
+  $("#lista-lanc").innerHTML = Object.entries(porDia).sort((x, y) => y[0].localeCompare(x[0])).map(([dia, itens]) => {
+    const titulo = dia === hj ? "Hoje" : dia === ontem ? "Ontem"
+      : new Date(dia + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "numeric", month: "short" });
+    return `<div class="dia">${esc(titulo)}</div><div class="grupo">${itens.map((l) => {
+      const cx = caixinhas.find((c) => c.id === l.caixinha_id);
+      const cat = (l.categoria || "").replace(/^\S+\s/, "");
+      const nome = l.descricao || (cx ? cx.nome : cat);
+      const sub = cx ? (l.tipo === "deposito" ? "Guardado em " : "Tirado de ") + cx.nome : cat;
+      const ic = cx ? cx.emoji : (l.categoria || ICONE[l.tipo]).split(" ")[0];
+      const sinal = l.tipo === "entrada" || l.tipo === "retirada" ? "+" : "−";
+      return `<div class="item"><span class="ic">${esc(ic)}</span>
+        <div class="txt"><b>${esc(nome)}${l.fixa_mes ? '<span class="marca-fixa">📌 FIXA</span>' : ""}</b><small>${selo(l.quem)}${esc(sub)}</small></div>
+        <span class="val ${l.tipo}">${sinal} ${real(l.valor)}</span>
+        <button class="apagar" data-apagar="${l.id}" aria-label="Apagar">🗑</button></div>`;
+    }).join("")}</div>`;
+  }).join("");
+}
+
 function desenhar() {
-  desenharMes();
+  const nome = mes.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  $("#mes-nome").textContent = nome[0].toUpperCase() + nome.slice(1);
+
   const ls = doMes();
   const soma = (t) => ls.filter((l) => l.tipo === t).reduce((s, l) => s + Number(l.valor), 0);
   const ent = soma("entrada"), sai = soma("saida"), guard = soma("deposito") - soma("retirada");
@@ -102,38 +173,32 @@ function desenhar() {
   $("#r-saidas").textContent = real(sai);
   $("#r-guardado").textContent = real(guard);
   $("#r-sobra").textContent = real(ent - sai - guard);
-  $(".num.sobra").classList.toggle("negativo", ent - sai - guard < 0);
+  $("#aba-resumo .destaque").classList.toggle("negativo", ent - sai - guard < 0);
+  const fixosMes = ls.filter((l) => l.tipo === "saida" && l.fixa_mes).reduce((s, l) => s + Number(l.valor), 0);
+  $("#r-fixos").textContent = real(fixosMes);
+  $("#r-variaveis").textContent = real(sai - fixosMes);
 
   const porCat = {}, porPessoa = {};
   ls.filter((l) => l.tipo === "saida").forEach((l) => {
-    porCat[l.categoria || "📦 Outros"] = (porCat[l.categoria || "📦 Outros"] || 0) + Number(l.valor);
+    const cat = l.categoria || "📦 Outros";
+    porCat[cat] = (porCat[cat] || 0) + Number(l.valor);
     porPessoa[nomeDe(l.quem)] = (porPessoa[nomeDe(l.quem)] || 0) + Number(l.valor);
   });
   barras($("#r-categorias"), porCat, "var(--saida)");
-  barras($("#r-pessoas"), porPessoa, "var(--primaria)");
+  barras($("#r-pessoas"), porPessoa, "var(--primaria-2)");
 
   const ativas = caixinhas.filter((c) => !c.arquivada);
-  $("#r-caixinhas").innerHTML = ativas.length ? ativas.map((c) => progressoCaixinha(c, false)).join("")
+  $("#r-caixinhas").innerHTML = ativas.length ? ativas.map((c) => cartaoCaixinha(c, false)).join("")
     : `<p class="vazio">Crie a primeira caixinha na aba 🐷.</p>`;
-  $("#lista-caixinhas").innerHTML = ativas.map((c) => `<div class="cartao">${progressoCaixinha(c, true)}</div>`).join("");
+  $("#lista-caixinhas").innerHTML = ativas.map((c) => `<div class="cartao">${cartaoCaixinha(c, true)}</div>`).join("");
 
   const sel = $("#form-lanc [name=caixinha_id]");
   const atual = sel.value;
   sel.innerHTML = ativas.map((c) => `<option value="${c.id}">${esc(c.emoji)} ${esc(c.nome)}</option>`).join("");
   if (atual) sel.value = atual;
 
-  const icone = { entrada: "💵", saida: "💸", deposito: "🐷", retirada: "↩️" };
-  $("#lista-lanc").innerHTML = ls.length ? ls.map((l) => {
-    const cx = caixinhas.find((c) => c.id === l.caixinha_id);
-    const titulo = l.descricao || (cx ? `${cx.emoji} ${cx.nome}` : l.categoria) || "";
-    const sub = [l.data.split("-").reverse().join("/"), cx ? `${cx.emoji} ${cx.nome}` : l.categoria, nomeDe(l.quem)]
-      .filter(Boolean).map(esc).join(" · ");
-    const sinal = l.tipo === "entrada" || l.tipo === "retirada" ? "+" : "−";
-    return `<li><span class="ic">${icone[l.tipo]}</span>
-      <div class="txt"><b>${esc(titulo)}</b><small>${sub}</small></div>
-      <span class="val ${l.tipo}">${sinal} ${real(l.valor)}</span>
-      <button class="icone apagar" data-apagar="${l.id}" aria-label="Apagar">🗑</button></li>`;
-  }).join("") : `<li class="vazio">Nada lançado neste mês.</li>`;
+  desenharHistorico(ls);
+  desenharFixas();
 }
 
 function trocarTipo() {
@@ -145,19 +210,48 @@ function trocarTipo() {
 }
 
 function abrirAba(nome) {
+  abaAtual = nome;
   $$(".aba").forEach((a) => (a.hidden = a.id !== "aba-" + nome));
-  $$("#abas button").forEach((b) => b.classList.toggle("ativa", b.dataset.aba === nome));
+  $$("#abas [data-aba]").forEach((b) => b.classList.toggle("ativa", b.dataset.aba === nome));
+  $("#mes").hidden = !(nome === "resumo" || nome === "historico");
   window.scrollTo(0, 0);
 }
 
 async function atualizar() {
-  try { if (await carregar()) { mostrar("app"); desenhar(); } }
+  try {
+    if (!(await carregar())) return;
+    if (await lancarFixas()) await carregar();
+    mostrar("app"); desenhar();
+  }
   catch (e) { alert("Erro ao carregar: " + e.message); }
 }
 
 // ---------- eventos ----------
 function ligarEventos() {
-  $$("#abas button").forEach((b) => b.addEventListener("click", () => abrirAba(b.dataset.aba)));
+  $$("#abas [data-aba]").forEach((b) => b.addEventListener("click", () => abrirAba(b.dataset.aba)));
+  $("[data-sair]").addEventListener("click", () => { if (confirm("Sair da conta?")) db.auth.signOut(); });
+  $("#form-fixa [name=categoria]").innerHTML = CATEGORIAS.saida.map((c) => `<option>${c}</option>`).join("");
+  $("#nova-fixa").addEventListener("click", () => abrirFormFixa());
+  $("#cancelar-fixa").addEventListener("click", fecharFormFixa);
+  $("#form-fixa").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const f = new FormData(ev.target);
+    const valor = lerValor(f.get("valor")), dia = Number(f.get("dia"));
+    if (!(valor > 0)) { $("#msg-fixa").textContent = "Valor inválido."; return; }
+    if (!(dia >= 1 && dia <= 31)) { $("#msg-fixa").textContent = "Dia entre 1 e 31."; return; }
+    const linha = { descricao: f.get("descricao"), valor, dia, categoria: f.get("categoria") };
+    const id = f.get("fx_id");
+    const { error } = id ? await db.from("fixas").update(linha).eq("id", id) : await db.from("fixas").insert(linha);
+    if (error) { $("#msg-fixa").textContent = "Erro: " + error.message; return; }
+    if (id) { // o lançamento deste mês acompanha a mudança
+      const agora = new Date(), mesAtual = hoje().slice(0, 7);
+      const ultimo = new Date(agora.getFullYear(), agora.getMonth() + 1, 0).getDate();
+      await db.from("lancamentos").update({ valor, descricao: linha.descricao, categoria: linha.categoria,
+        data: `${mesAtual}-${String(Math.min(dia, ultimo)).padStart(2, "0")}` }).eq("fixa_id", id).eq("fixa_mes", mesAtual);
+    }
+    fecharFormFixa();
+    await atualizar();
+  });
   $$("[data-mes]").forEach((b) => b.addEventListener("click", () => {
     mes.setMonth(mes.getMonth() + Number(b.dataset.mes)); desenhar();
   }));
@@ -180,7 +274,6 @@ function ligarEventos() {
     $("#msg-login").textContent = error ? traduzir(error.message)
       : data.session ? "" : "Conta criada! Confirme pelo link que chegou no seu e-mail e depois entre.";
   });
-  $("#sair").addEventListener("click", () => db.auth.signOut());
 
   $("#form-lanc").addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -199,6 +292,7 @@ function ligarEventos() {
     await atualizar();
   });
 
+  $("#nova-caixinha").addEventListener("click", () => abrirFormCaixinha());
   $("#form-caixinha").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const f = new FormData(ev.target);
@@ -209,10 +303,10 @@ function ligarEventos() {
     const { error } = id ? await db.from("caixinhas").update(linha).eq("id", id)
                          : await db.from("caixinhas").insert(linha);
     if (error) { $("#msg-caixinha").textContent = "Erro: " + error.message; return; }
-    limparCaixinha();
+    fecharFormCaixinha();
     await atualizar();
   });
-  $("#cancelar-caixinha").addEventListener("click", limparCaixinha);
+  $("#cancelar-caixinha").addEventListener("click", fecharFormCaixinha);
 
   document.addEventListener("click", async (ev) => {
     const b = ev.target.closest("button");
@@ -228,24 +322,55 @@ function ligarEventos() {
         if (error) alert(error.message); else atualizar();
       }
     }
-    if (b.dataset.editar) {
-      const c = caixinhas.find((x) => x.id === b.dataset.editar), f = $("#form-caixinha");
-      f.cx_id.value = c.id; f.emoji.value = c.emoji; f.nome.value = c.nome;
-      f.meta.value = Number(c.meta).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
-      f.prazo.value = c.prazo || "";
-      $("#titulo-form-caixinha").textContent = "Editar caixinha";
-      $("#cancelar-caixinha").hidden = false;
-      f.scrollIntoView({ behavior: "smooth" });
+    if (b.dataset.editar) abrirFormCaixinha(caixinhas.find((x) => x.id === b.dataset.editar));
+    if (b.dataset.editarFx) abrirFormFixa(fixas.find((x) => x.id === b.dataset.editarFx));
+    if (b.dataset.apagarFx) {
+      const f = fixas.find((x) => x.id === b.dataset.apagarFx);
+      if (confirm(`Apagar a despesa fixa "${f.descricao}"? Os meses já lançados continuam no histórico.`)) {
+        const { error } = await db.from("fixas").delete().eq("id", f.id);
+        if (error) alert(error.message); else atualizar();
+      }
     }
   });
 }
 
-function limparCaixinha() {
+function abrirFormCaixinha(c) {
   const f = $("#form-caixinha");
   f.reset(); f.cx_id.value = "";
-  $("#titulo-form-caixinha").textContent = "Nova caixinha";
-  $("#cancelar-caixinha").hidden = true;
+  if (c) {
+    f.cx_id.value = c.id; f.emoji.value = c.emoji; f.nome.value = c.nome;
+    f.meta.value = Number(c.meta) ? Number(c.meta).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "";
+    f.prazo.value = c.prazo || "";
+  }
+  $("#titulo-form-caixinha").textContent = c ? "Editar caixinha" : "Nova caixinha";
   $("#msg-caixinha").textContent = "";
+  f.hidden = false;
+  $("#nova-caixinha").hidden = true;
+  f.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function abrirFormFixa(x) {
+  const f = $("#form-fixa");
+  f.reset(); f.fx_id.value = ""; f.categoria.value = "💡 Contas";
+  if (x) {
+    f.fx_id.value = x.id; f.descricao.value = x.descricao; f.dia.value = x.dia; f.categoria.value = x.categoria;
+    f.valor.value = Number(x.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+  }
+  $("#titulo-form-fixa").textContent = x ? "Editar despesa fixa" : "Nova despesa fixa";
+  $("#msg-fixa").textContent = "";
+  f.hidden = false;
+  $("#nova-fixa").hidden = true;
+  f.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function fecharFormFixa() {
+  $("#form-fixa").hidden = true;
+  $("#nova-fixa").hidden = false;
+}
+
+function fecharFormCaixinha() {
+  $("#form-caixinha").hidden = true;
+  $("#nova-caixinha").hidden = false;
 }
 
 function traduzir(m) {
@@ -269,6 +394,7 @@ function traduzir(m) {
     if (!primeira && novo === usuario?.id) return; // só renovou o token
     primeira = false;
     usuario = sessao?.user || null;
+    // o Supabase pede para não chamar a API dentro deste callback
     setTimeout(() => (usuario ? atualizar() : mostrar("tela-login")), 0);
   });
   // o outro mexeu? atualiza ao voltar para o app
