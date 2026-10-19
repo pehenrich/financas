@@ -74,6 +74,7 @@ input:focus, select:focus { border-color: var(--primaria-2); box-shadow: 0 0 0 3
 .msg { min-height: 1.2em; margin: 10px 0 0; color: var(--suave); text-align: center; font-size: .9rem; }
 .link { background: none; border: 0; color: var(--primaria-2); padding: 4px 0; font-size: .85rem; font-weight: 600; }
 .perigo { color: var(--saida); }
+.centro { display: block; margin: 12px auto 0; }
 
 /* valor grande */
 .valor-campo {

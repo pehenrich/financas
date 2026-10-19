@@ -21,10 +21,11 @@ const lerValor = (t) => {
 
 let db, usuario, membros = [], caixinhas = [], lancamentos = [], fixas = [], semFixas = false;
 let abaAtual = "resumo";
+let recuperando = /type=recovery/.test(location.hash); // veio do link "esqueci minha senha"
 const mes = new Date(); mes.setDate(1);
 
 function mostrar(id) {
-  ["tela-config", "tela-login", "tela-negado"].forEach((t) => ($("#" + t).hidden = t !== id));
+  ["tela-config", "tela-login", "tela-negado", "tela-senha"].forEach((t) => ($("#" + t).hidden = t !== id));
   const dentro = id === "app";
   $("#app").hidden = !dentro;
   $("#abas").hidden = !dentro;
@@ -275,6 +276,26 @@ function ligarEventos() {
       : data.session ? "" : "Conta criada! Confirme pelo link que chegou no seu e-mail e depois entre.";
   });
 
+  $("#esqueci").addEventListener("click", async () => {
+    const email = $("#form-login").email.value.trim();
+    if (!email) { $("#msg-login").textContent = "Digite seu e-mail acima e toque de novo em Esqueci minha senha."; return; }
+    $("#msg-login").textContent = "Enviando…";
+    const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: location.href.split("#")[0].split("?")[0] });
+    $("#msg-login").textContent = error ? traduzir(error.message)
+      : "Pronto! Abra o link que chegou no seu e-mail (veja também o spam) para criar a senha nova.";
+  });
+  $("#form-senha").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const f = new FormData(ev.target);
+    if (f.get("senha") !== f.get("senha2")) { $("#msg-senha").textContent = "As senhas não são iguais."; return; }
+    const { error } = await db.auth.updateUser({ password: f.get("senha") });
+    if (error) { $("#msg-senha").textContent = traduzir(error.message); return; }
+    recuperando = false;
+    ev.target.reset();
+    history.replaceState(null, "", location.pathname);
+    atualizar();
+  });
+
   $("#form-lanc").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const f = new FormData(ev.target);
@@ -377,6 +398,8 @@ function traduzir(m) {
   if (/Invalid login/i.test(m)) return "E-mail ou senha errados.";
   if (/Email not confirmed/i.test(m)) return "Confirme o e-mail pelo link que chegou na sua caixa de entrada.";
   if (/already registered/i.test(m)) return "Esse e-mail já tem conta. Use Entrar.";
+  if (/rate limit|security purposes/i.test(m)) return "Muitos pedidos seguidos. Espere alguns minutos e tente de novo.";
+  if (/different from the old/i.test(m)) return "A senha nova precisa ser diferente da antiga.";
   return m;
 }
 
@@ -389,7 +412,9 @@ function traduzir(m) {
   $("#form-lanc [name=data]").value = hoje();
   trocarTipo();
   let primeira = true;
-  db.auth.onAuthStateChange((_ev, sessao) => {
+  db.auth.onAuthStateChange((ev, sessao) => {
+    if (ev === "PASSWORD_RECOVERY") recuperando = true;
+    if (recuperando && sessao) { usuario = sessao.user; primeira = false; setTimeout(() => mostrar("tela-senha"), 0); return; }
     const novo = sessao?.user?.id;
     if (!primeira && novo === usuario?.id) return; // só renovou o token
     primeira = false;
@@ -398,5 +423,5 @@ function traduzir(m) {
     setTimeout(() => (usuario ? atualizar() : mostrar("tela-login")), 0);
   });
   // o outro mexeu? atualiza ao voltar para o app
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && usuario) atualizar(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && usuario && !recuperando) atualizar(); });
 })();

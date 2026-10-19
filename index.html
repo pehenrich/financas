@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icone.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icone.svg">
-  <link rel="stylesheet" href="estilo.css?v=5">
+  <link rel="stylesheet" href="estilo.css?v=6">
 </head>
 <body>
   <header class="topo">
@@ -39,7 +39,19 @@
       <label>Senha <input type="password" name="senha" required minlength="6" autocomplete="current-password"></label>
       <button type="submit" class="primario">Entrar</button>
       <button type="button" id="criar-conta" class="secundario">Criar conta</button>
+      <button type="button" id="esqueci" class="link centro">Esqueci minha senha</button>
       <p id="msg-login" class="msg"></p>
+    </form>
+  </section>
+
+  <!-- nova senha (link do e-mail de recuperação) -->
+  <section id="tela-senha" class="tela" hidden>
+    <form id="form-senha" class="cartao">
+      <h2>Criar nova senha</h2>
+      <label>Nova senha <input type="password" name="senha" required minlength="6" autocomplete="new-password"></label>
+      <label>Repita a senha <input type="password" name="senha2" required minlength="6" autocomplete="new-password"></label>
+      <button type="submit" class="primario">Salvar nova senha</button>
+      <p id="msg-senha" class="msg"></p>
     </form>
   </section>
 
@@ -160,7 +172,7 @@
   </nav>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0/dist/umd/supabase.min.js"></script>
-  <script src="config.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="config.js?v=6"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
