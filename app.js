@@ -263,11 +263,13 @@ function traduzir(m) {
   ligarEventos();
   $("#form-lanc [name=data]").value = hoje();
   trocarTipo();
+  let primeira = true;
   db.auth.onAuthStateChange((_ev, sessao) => {
     const novo = sessao?.user?.id;
-    if (novo === usuario?.id) return;
+    if (!primeira && novo === usuario?.id) return; // só renovou o token
+    primeira = false;
     usuario = sessao?.user || null;
-    if (usuario) atualizar(); else mostrar("tela-login");
+    setTimeout(() => (usuario ? atualizar() : mostrar("tela-login")), 0);
   });
   // o outro mexeu? atualiza ao voltar para o app
   document.addEventListener("visibilitychange", () => { if (!document.hidden && usuario) atualizar(); });
